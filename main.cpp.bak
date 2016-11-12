@@ -1,0 +1,731 @@
+#include <iostream>
+#include <random>
+#include <list>
+#include <vector>
+#include <limits.h>
+#include <stdlib.h>
+#include <time.h>
+#include <ctime>
+#include <chrono>
+#include <math.h>
+#include <thread>
+#include <algorithm>
+#include <iterator>
+
+//#define double LAMBDA = 0.5;
+using namespace std;
+
+struct Msg
+{
+    int num_msg;
+    int hora_entrada;
+    int veces_enviado;
+    bool eviado = false;
+    int codigo;
+};
+
+struct ACK
+{
+    int num_msg_esperando;
+    int veces_enviado;
+    bool se_pierde=false;
+};
+
+struct find_num_msg : std::unary_function<Msg, bool>
+{
+    int num_msg;
+    find_num_msg(int num_msg):num_msg(num_msg) { }
+    bool operator()(Msg const& m) const
+    {
+        return m.num_msg == num_msg;
+    }
+};
+
+double ultimo_cambio_colaA=0;
+double Eventos[6]= {INT_MAX, INT_MAX, INT_MAX, INT_MAX, INT_MAX, INT_MAX};
+int colaA_tamanno=0;
+int colaB=0;
+unsigned int  primerosA[20] = {};
+unsigned int primerosB [20] = {};
+unsigned int indiceColaA = 0;
+double reloj = 0;
+double Max = 0;
+int ventana = 0;
+bool libreA = true;
+bool libreB = true;
+vector<Msg> msgA;
+list<Msg> msgB;
+vector<Msg> ventanaA;
+Msg ultimo;
+ACK ultimoAck;
+int ultimoAckRecibido = 1;
+double DuracionTimer=0;
+double TimersVentana[8]= {};
+int punteroTimers=0;
+int cantMsgsGenerados=0;
+double MsgsCorrectos=0;
+double ZTPCA=0;
+double ZTP_SIST=0;
+unsigned int frameCorrectosB = 0;
+
+double revisarFrame_ACK ()
+{
+
+
+    srand( unsigned(time(NULL)));
+
+    double r=((double)rand()/(double)RAND_MAX);
+
+    // cout<<" R= "<<r<<endl;
+    double x=sqrt(5*r + 4);
+    //    cout<<" X= "<<x<<endl;
+
+    return x;
+}
+
+double normalDistr(double media , double varianza)
+{
+    srand( unsigned(time(NULL)));
+
+    double r1=((double)rand()/(double)RAND_MAX);
+    double r2=((double)rand()/(double)RAND_MAX);
+
+    //cout<<" R1= "<<r1<<"\tR2= "<<r2<<endl;
+    double z=0;
+    if((2*3.14159265*r2)!=0)
+    {
+
+        z= sqrt((-2*(log(r1))))*sin(2*3.14159265*r2);
+    }
+    else
+    {
+        z= sqrt((-2*(log(r1))))*cos(2*3.14159265*r2);
+    }
+    //cout<<" z= "<<z<<endl;
+
+    double x=(varianza*z)+media;
+    //cout<<" X= "<<x<<endl;
+
+    return x;
+}
+
+double expDistr(double lambda)
+{
+    srand( unsigned(time(NULL)));
+
+    double r=((double)rand()/(double)RAND_MAX);
+    cout<<" R= "<<r<<endl;
+
+
+    return (-(log(r) )/lambda);
+}
+
+int Next_Event ()
+{
+
+    int smallest = Eventos[0];
+    int index=0;
+    for (int i = 0; i <=5; i++)
+    {
+        cout<<"Evento[";
+        cout<<i;
+        cout<<"]: ";
+        cout<<Eventos[i]<<endl;
+
+        if (Eventos[i] < smallest)
+        {
+
+            smallest = Eventos[i];
+            index=i;
+        }
+    }
+    return index;
+
+}
+
+Msg GeneradorMsg ()
+{
+    Msg m;
+    m.num_msg=cantMsgsGenerados;
+    cantMsgsGenerados++;
+    m.veces_enviado=0;
+    return m;
+}
+int Fin()
+{
+    int retorno = -1;
+
+    if (reloj>=Max)
+    {
+        //ESTADISTICAS
+        //Tamaño promedio de la cola en A
+
+        double TPCA= ZTPCA/reloj;
+        //Tiempo promedio de "permanencia de un mensaje en el sistema"
+
+        double TP_SIST= ZTP_SIST/MsgsCorrectos;
+        //Promedio del tiempo de transmisión para un mensaje
+        //esta se saca haciendo un acumulador de todos los envios hechos, cada msg tiene un int de # de veces enviado, ocumula eso cada vez q se envia  reenvia, para todos los msgs y lo divide entre msgscorrectos
+    }
+    else
+    {
+        int next = Next_Event();
+        retorno = next;
+    }
+    return retorno;
+}
+
+int LlegaMsgA()
+{
+    Msg msg = GeneradorMsg();
+    reloj= Eventos[0];
+    cout<<"reloj "<<reloj<<endl;
+    double a=colaA_tamanno;
+    ZTPCA+= a*(reloj-ultimo_cambio_colaA);
+    colaA_tamanno++;
+    ultimo_cambio_colaA=reloj;
+
+    // cout<<"cola "<<colaA<<endl;
+
+    msg.hora_entrada=reloj;
+    cout<<"msg.hora_entrada "<<msg.hora_entrada<<endl;
+
+    msgA.push_back(msg);
+    if (ventana < 8)
+    {
+        ventana++;
+        cout<<"ventana "<<ventana<<endl;
+        primerosA[ventana] = msg.num_msg;
+        ventanaA.push_back(msg);
+        if (libreA)
+        {
+            libreA = false;
+            msg = ventanaA.front();
+            //ventanaA.pop_front();
+            double frame = expDistr(0.5);
+            reloj += frame;
+            //generar si se va a perder el frame, llega bien o con error
+            srand(time(0));
+            int cod = rand() % 100 + 1;
+            cout<<"cod "<<cod<<endl;
+
+            if( cod<=10)
+            {
+                msg.codigo=3;
+            }
+            else if (cod>15)
+            {
+                msg.codigo=1;
+            }
+            else
+            {
+                msg.codigo = 2;
+            }
+            cout<<"msg.codigo "<<msg.codigo<<endl;
+
+            //bien: msg.codigo=1;
+            //error: msg.codigo=2;
+            //perdido: msg.codigo=3;
+
+            msg.eviado = true;
+            Eventos[1]=reloj+1;
+            cout<<"Eventos[1] "<<Eventos[1]<<endl;
+            //colaA--;
+            ultimo = msg;
+
+        }
+
+    }
+    else
+    {
+        bool fin = false;
+        int contador = 8;
+        while (!fin)
+        {
+            if (contador >20)
+                fin = true;
+            else
+            {
+                if (primerosA[contador] != 0)
+                    contador++;
+                else
+                {
+                    fin = true;
+                }
+            }
+        }
+        if (contador > 20)
+            primerosA[contador] = msg.num_msg;
+    }
+
+    double sgtMsg = normalDistr(25, 1);
+    reloj += sgtMsg;
+    //cout<<reloj
+    Eventos[0]=reloj;
+    cout<<"Eventos[0] "<<Eventos[0]<<endl;
+
+    return Fin();
+}
+
+int SeLiberaA (Msg msg)
+{
+    indiceColaA++;
+    reloj= Eventos[1];
+    cout<<"reloj "<<reloj<<endl;
+    ventana--;
+    msg.veces_enviado++;
+    //colaA--;
+    cout<<"msg.veces_enviado "<<msg.veces_enviado<<endl;
+    int contador = 1;
+    bool fin = false;
+    while (!fin)
+    {
+        if (contador < 20)
+        {
+            if (primerosA[contador] != 0)
+                primerosA[contador -1] = primerosA[contador];
+            else
+                fin = true;
+        }
+    }
+    if (primerosA[19] != 0 && primerosA[19] != msgA.back().num_msg)
+    {
+        int indice = primerosA[19];
+        primerosA[19] = msgA[indice-1].num_msg;
+    }
+
+
+
+    if (msg.codigo!=3)
+    {
+        Eventos[2]=reloj+1;
+        cout<<"Eventos[2] "<<Eventos[2]<<endl;
+
+        cout<<"Eventos[5] "<<Eventos[5]<<endl;
+
+    }
+    if (Eventos[5]==INT_MAX)
+    {
+
+        TimersVentana[0]=reloj+DuracionTimer;
+        cout<<"TimersVentana[0] "<<TimersVentana[0]<<endl;
+
+        punteroTimers=1;
+        Eventos[5]=reloj+DuracionTimer;
+        cout<<"Eventos[5] "<<Eventos[5]<<endl;
+
+    }
+    else
+    {
+        TimersVentana[punteroTimers]=reloj+DuracionTimer;
+        punteroTimers++;
+    }
+    if (ventana==0)
+    {
+        libreA=true;
+        Eventos[1] = INT_MAX;
+    }
+    else
+    {
+
+        msg = ventanaA[8 - ventana];
+        //ventanaA.pop_front();
+        libreA=false;
+        double frame = expDistr(0.5);
+        reloj += frame;
+        //generar si se va a perder el frame, llega bien o con error
+        srand(time(0));
+        int cod = rand() % 100 + 1;
+        cout<<"cod "<<cod<<endl;
+
+        if( cod<=10)
+        {
+            msg.codigo=3;
+        }
+        else if (cod>15)
+        {
+            msg.codigo=1;
+        }
+        else
+        {
+            msg.codigo = 2;
+        }
+        cout<<"msg.codigo "<<msg.codigo<<endl;
+
+        //bien: msg.codigo=1;
+        //error: msg.codigo=2;
+        //perdido: msg.codigo=3;
+
+        //  libreA = true;
+        msg.eviado = true;
+        Eventos[1]=reloj+1;
+        cout<<"Eventos[1] "<<Eventos[1]<<endl;
+        //colaA--;
+        ultimo = msg;
+        //Eventos[1]=reloj+1;
+        //cout<<"Eventos[1] "<<Eventos[1]<<endl;
+    }
+    return Fin();
+}
+
+
+int LlegaFrameB (Msg msg)
+{
+    reloj=Eventos[2];
+    if(msg.codigo!=3)
+    {
+        if (msg.num_msg != ultimoAck.num_msg_esperando)
+            msg.codigo = 2;
+        if (libreB == true)
+        {
+
+            libreB = false;
+            int t_rev= revisarFrame_ACK();
+            ACK a;
+            if (msg.codigo == 2)
+                a.num_msg_esperando=msg.num_msg;
+            else
+            {
+                a.num_msg_esperando=msg.num_msg + 1;
+                frameCorrectosB++;
+                for (unsigned int contador = 19; contador > 0; contador++)
+                    primerosB[contador] = primerosB[contador-1];
+                primerosB[0] = msg.num_msg;
+
+            }
+
+            //generar si ACK se pierde
+
+            srand(time(0));
+            int perdido = rand() % 100 + 1;
+
+            if (perdido<=15)
+            {
+                a.se_pierde = true;
+            }
+
+            if( a.se_pierde==false)
+            {
+                Eventos[4]=reloj+t_rev+.25+1;
+            }
+            Eventos[3]=reloj+t_rev+.25;
+            ultimoAck = a;
+            //return Fin();
+        }
+        else
+        {
+            colaB++;
+            msgB.push_back(msg);
+        }
+
+
+    }
+
+    Eventos[2] = INT_MAX;
+    return Fin();
+}
+
+int SeLiberaB(ACK ack)
+{
+    reloj= Eventos[3];
+    msgB.pop_front();
+
+    libreB = true;
+    if (!ack.se_pierde)
+    {
+        Eventos[4] = reloj+1;
+    }
+    if (colaB > 0)
+    {
+        Msg msg = msgB.front();
+        if (msg.num_msg != ultimoAck.num_msg_esperando)
+            msg.codigo = 2;
+
+        if (libreB==true)
+        {
+            libreB = false;
+
+
+            int t_rev= revisarFrame_ACK();
+            ACK a;
+            if (msg.codigo == 2)
+                a.num_msg_esperando=msg.num_msg;
+            else
+            {
+                a.num_msg_esperando=msg.num_msg + 1;
+                frameCorrectosB++;
+                for (unsigned int contador = 19; contador > 0; contador++)
+                    primerosB[contador] = primerosB[contador-1];
+                primerosB[0] = msg.num_msg;
+            }
+            //generar si ACK se pierde
+
+            srand(time(0));
+            int perdido = rand() % 100 + 1;
+
+            if (perdido<=15)
+            {
+                a.se_pierde = true;
+            }
+
+            if( a.se_pierde==false)
+            {
+                Eventos[4]=reloj+t_rev+.25+1;
+            }
+            Eventos[3]=reloj+t_rev+.25;
+            ultimoAck = a;
+
+
+            //return Fin();
+        }
+
+    }
+    else
+        Eventos[3] = INT_MAX;
+
+    return Fin();
+}
+
+int ARecibeACK(ACK ack)
+{
+
+    reloj = Eventos[4];
+    //int i = ventanaA.front().num_msg;
+    int i = ack.num_msg_esperando;
+
+    //cout<<"I: "<<i<<endl;
+    ZTPCA+=(colaA_tamanno*(reloj-ultimo_cambio_colaA));
+    colaA_tamanno -= (i - ultimoAckRecibido)+1;   //despues de un largo analisis no tengo idea de para q puso eso, pero modifica la cola!
+    ultimoAckRecibido = ack.num_msg_esperando;
+    ultimo_cambio_colaA=reloj;
+    MsgsCorrectos += (i - ultimoAckRecibido);
+
+    std::vector<Msg>::iterator it = std::find_if (msgA.begin(), msgA.end(), find_num_msg(ack.num_msg_esperando-1));
+    ZTP_SIST+=reloj-(*it).hora_entrada;
+
+    ventanaA.clear();
+    ventana = 0;
+    Eventos[5] = INT_MAX;
+    bool fin = false;
+    while (!fin)
+    {
+        if (ack.num_msg_esperando-1 >= msgA.back().num_msg)
+        {
+            fin = true;
+        }
+        else
+        {
+            ventanaA[ventana] = msgA[ack.num_msg_esperando + ventana];
+            ventana++;
+            if (ventana == 8)
+                fin = true;
+        }
+    }
+
+    if (ventana > 0)
+    {
+        Msg msg = ventanaA.front();
+        indiceColaA = (msg.num_msg-1);
+
+        if (libreA)
+        {
+            libreA=false;
+            double frame = expDistr(0.5); //xq ud usa .5, si es de 2 segundos?
+            reloj += frame;
+            //generar si se va a perder el frame, llega bien o con error
+            srand(time(0));
+            int cod = rand() % 100 + 1;
+            cout<<"cod "<<cod<<endl;
+
+            if( cod<=10)
+            {
+                msg.codigo=3;
+            }
+            else if (cod>15)
+            {
+                msg.codigo=1;
+            }
+            else
+            {
+                msg.codigo = 2;
+            }
+            cout<<"msg.codigo "<<msg.codigo<<endl;
+
+            //bien: msg.codigo=1;
+            //error: msg.codigo=2;
+            //perdido: msg.codigo=3;
+
+            //  libreA = true;
+            msg.eviado = true;
+            Eventos[1]=reloj+1;
+            cout<<"Eventos[1] "<<Eventos[1]<<endl;
+            //colaA--;
+            ultimo = msg;
+            //msg.veces_enviado++;
+        }
+        //Eventos[1]=reloj+1;
+        //cout<<"Eventos[1] "<<Eventos[1]<<endl;
+
+    }
+
+    Eventos[4] = INT_MAX;
+    return Fin();
+}
+
+int SeVenceTimer(Msg msg)
+{
+    reloj=Eventos[5];
+    ultimo.num_msg=msg.num_msg;
+
+    Eventos[5] = INT_MAX;
+    ventana = ventanaA.size();
+    if (ventana > 0)
+    {
+        Msg msg = ventanaA.front();
+        indiceColaA = (msg.num_msg-1);
+        //ventanaA.pop_front();
+        if (libreA)
+        {
+            libreA=false;
+            double frame = expDistr(0.5);
+            reloj += frame;
+            //generar si se va a perder el frame, llega bien o con error
+            srand(time(0));
+            int cod = rand() % 100 + 1;
+            cout<<"cod "<<cod<<endl;
+
+            if( cod<=10)
+            {
+                msg.codigo=3;
+            }
+            else if (cod>15)
+            {
+                msg.codigo=1;
+            }
+            else
+            {
+                msg.codigo = 2;
+            }
+            cout<<"msg.codigo "<<msg.codigo<<endl;
+
+            //bien: msg.codigo=1;
+            //error: msg.codigo=2;
+            //perdido: msg.codigo=3;
+
+            //  libreA = true;
+            msg.eviado = true;
+            Eventos[1]=reloj+1;
+            cout<<"Eventos[1] "<<Eventos[1]<<endl;
+            //colaA--;
+            ultimo = msg;
+            //msg.veces_enviado++;
+            //Eventos[1]=reloj+1;
+            //cout<<"Eventos[1] "<<Eventos[1]<<endl;
+        }
+
+    }
+
+
+    return Fin();
+}
+
+int main()
+{
+
+    Eventos[0]=1;
+    int fin = 0;
+    bool lento=false;
+    int l=0;
+
+    string creditos =       "\t\t************************************\n"
+                            "\t\t*  Proyecto de Simulacion 1        *\n"
+                            "\t\t*                                  *\n"
+                            "\t\t*  Carolina Avila Arias    B30721  *\n"
+                            "\t\t*  Daniel Peralta Madriz   B04740  *\n"
+                            "\t\t************************************\n\n";
+
+    cout<<creditos<<endl;
+    cout<<"\n\t\t Digite el Tiempo de Simulacion"<<endl;
+    cin >> Max;
+
+    //cin.ignore();
+    cout<<"\t\t Digite la Duracion del timer"<<endl;
+    cin >> DuracionTimer;
+    //cin.ignore();
+
+    string modo="\t\t Desea ver la simulacion correr en modo lento?\n"
+                "\t\t   Digite 1 Si \n"
+                "\t\t   Digite 2 No  \n";
+    cout<<modo<<endl;
+    cin >> l;
+    //cin.ignore();
+
+    if (l==1)
+    {
+
+        lento=true;
+        cout<<"si, lento"<<endl;
+
+    }
+    string lentoString="\t\t Cuando este listo(a) para continuar, presione cualquier número\n";
+    //cout<<l<<endl;
+    //Sleep(10);
+
+    while (fin >= 0)
+    {
+        switch(fin)
+        {
+        case 0:
+        {
+            fin = LlegaMsgA();
+        }
+        break;
+        case 1:
+        {
+            fin = SeLiberaA(ultimo);
+        }
+        break;
+        case 2:
+        {
+            fin =  LlegaFrameB(ultimo);
+        }
+        break;
+        case 3:
+        {
+            fin = SeLiberaB(ultimoAck);
+        }
+        break;
+        case 4:
+        {
+            fin = ARecibeACK(ultimoAck);
+        }
+        break;
+        case 5:
+        {
+            fin = SeVenceTimer(ultimo);
+        }
+        break;
+        }
+        cout<<"Reloj: ";
+        cout<<reloj<<endl;
+        cout<<"Tamano de la cola: ";
+        cout<<colaA_tamanno<<endl;
+        if (fin >= 0)
+            cout<<"Evento siguiente: "<<fin<<endl;
+
+        if (lento && fin >= 0)
+        {
+            cout<<lentoString<<endl;
+            cin >> l;
+        }
+
+
+    }
+
+
+    //cout<<"fin "<<fin<<endl;
+
+
+
+    return 0;
+}

@@ -1,0 +1,64 @@
+# depslib dependency file v1.0
+1433727983 source:c:\users\carolina\documents\3rd year 2015 ecci\i semestre\io\simulacion 1\io_simulacion_1\main.cpp
+	<iostream>
+	<iostream>
+	<list>
+	<vector>
+	<stdlib.h>
+	<limits.h>
+	<stdlib.h>
+	<time.h>
+
+1433737571 source:c:\users\daniel peralta\desktop\new folder\io_simulacion_1\main.cpp
+	<iostream>
+	<iostream>
+	<random>
+	<list>
+	<vector>
+	<stdlib.h>
+	<limits.h>
+	<stdlib.h>
+	<time.h>
+	<ctime>
+
+1433788655 source:d:\danielito\google drive\word\iosimulacion\main.cpp
+	<iostream>
+	<iostream>
+	<random>
+	<list>
+	<vector>
+	<stdlib.h>
+	<limits.h>
+	<stdlib.h>
+	<time.h>
+	<ctime>
+	<chrono>
+
+1434304602 source:c:\users\carolina\documents\simulacion\repo\main.cpp
+	<iostream>
+	<random>
+	<list>
+	<vector>
+	<limits.h>
+	<stdlib.h>
+	<time.h>
+	<ctime>
+	<chrono>
+	<math.h>
+	<thread>
+	<Windows.h>
+
+1434605989 source:d:\danielito\google drive\simulacion\main.cpp
+	<iostream>
+	<random>
+	<list>
+	<vector>
+	<limits.h>
+	<stdlib.h>
+	<time.h>
+	<ctime>
+	<chrono>
+	<math.h>
+	<thread>
+	<algorithm>
+
